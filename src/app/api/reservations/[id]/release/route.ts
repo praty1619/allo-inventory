@@ -3,41 +3,29 @@ import { prisma } from '@/lib/prisma'
 
 export async function POST(
     req: Request,
-    { params }: { params: { id: string } }
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
-        const reservation = await prisma.reservation.findUnique({
-            where: { id: params.id },
-        })
+        const { id } = await params
+        const reservation = await prisma.reservation.findUnique({ where: { id } })
 
         if (!reservation) {
             return NextResponse.json({ error: 'Reservation not found' }, { status: 404 })
         }
-
         if (reservation.status === 'RELEASED') {
             return NextResponse.json(reservation)
         }
-
         if (reservation.status === 'CONFIRMED') {
             return NextResponse.json({ error: 'Cannot release a confirmed reservation' }, { status: 400 })
         }
 
         const [released] = await prisma.$transaction([
-            prisma.reservation.update({
-                where: { id: params.id },
-                data: { status: 'RELEASED' },
-            }),
+            prisma.reservation.update({ where: { id }, data: { status: 'RELEASED' } }),
             prisma.stock.update({
-                where: {
-                    productId_warehouseId: {
-                        productId: reservation.productId,
-                        warehouseId: reservation.warehouseId,
-                    },
-                },
+                where: { productId_warehouseId: { productId: reservation.productId, warehouseId: reservation.warehouseId } },
                 data: { reserved: { decrement: reservation.quantity } },
             }),
         ])
-
         return NextResponse.json(released)
     } catch (error) {
         console.error(error)

@@ -20,11 +20,9 @@ export async function POST(req: Request) {
 
         const { productId, warehouseId, quantity } = parsed.data
         const lockKey = `lock:stock:${productId}:${warehouseId}`
-        const lockValue = Date.now().toString()
-        const lockTTL = 5 // seconds
+        const lockTTL = 5
 
-        // Acquire Redis lock
-        const acquired = await redis.set(lockKey, lockValue, 'EX', lockTTL, 'NX')
+        const acquired = await redis.set(lockKey, Date.now().toString(), 'EX', lockTTL, 'NX')
 
         if (!acquired) {
             return NextResponse.json({ error: 'Too many concurrent requests, please retry' }, { status: 429 })
@@ -45,7 +43,7 @@ export async function POST(req: Request) {
                 return NextResponse.json({ error: 'Not enough stock available' }, { status: 409 })
             }
 
-            const expiresAt = new Date(Date.now() + 10 * 60 * 1000) // 10 minutes
+            const expiresAt = new Date(Date.now() + 10 * 60 * 1000)
 
             const [reservation] = await prisma.$transaction([
                 prisma.reservation.create({
@@ -59,7 +57,6 @@ export async function POST(req: Request) {
 
             return NextResponse.json(reservation, { status: 201 })
         } finally {
-            // Always release the lock
             await redis.del(lockKey)
         }
     } catch (error) {
